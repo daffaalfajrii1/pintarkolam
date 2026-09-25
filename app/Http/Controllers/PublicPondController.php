@@ -12,7 +12,9 @@ class PublicPondController extends Controller
             'user:id,name',
             'farmerProfile',
             'latestHealthScore',
-            'cycles' => fn ($q) => $q->with('fishSpecies')->whereIn('status', ['active', 'near_harvest'])->latest(),
+            'cycles' => fn ($q) => $q->with(['fishSpecies', 'harvestEstimate'])
+                ->whereIn('status', ['active', 'near_harvest'])
+                ->latest(),
         ])->where('public_token', $token)->firstOrFail();
 
         return view('public.pond', compact('pond'));

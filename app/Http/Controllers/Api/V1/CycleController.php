@@ -83,8 +83,10 @@ class CycleController extends Controller
             ]);
         }
 
+        app(HarvestEstimateService::class)->bootstrapForNewCycle($cycle->fresh(['fishSpecies']));
+
         return ApiResponse::success(
-            new CultivationCycleResource($cycle->load(['pond', 'fishSpecies', 'harvestEstimate'])),
+            new CultivationCycleResource($cycle->fresh()->load(['pond', 'fishSpecies', 'harvestEstimate'])),
             'Siklus budidaya dibuat',
             201
         );

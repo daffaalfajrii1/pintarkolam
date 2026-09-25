@@ -45,7 +45,7 @@ class CycleController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, HarvestEstimateService $estimateService)
     {
         $data = $request->validate([
             'pond_id' => ['required', 'exists:ponds,id'],
@@ -63,6 +63,19 @@ class CycleController extends Controller
         $pond = Pond::findOrFail($data['pond_id']);
         abort_unless($pond->user_id === $request->user()->id, 403);
 
+        $species = FishSpecies::findOrFail($data['fish_species_id']);
+        if (empty($data['target_size_gram'])) {
+            $data['target_size_gram'] = $species->typical_harvest_weight_gram;
+        }
+        if (empty($data['target_harvest_date']) && $species->typical_harvest_days) {
+            $data['target_harvest_date'] = \Carbon\Carbon::parse($data['stocking_date'])
+                ->addDays((int) $species->typical_harvest_days)
+                ->toDateString();
+        }
+        if (empty($data['initial_size_gram'])) {
+            $data['initial_size_gram'] = 5;
+        }
+
         $cycle = CultivationCycle::create([
             ...$data,
             'user_id' => $request->user()->id,
@@ -79,7 +92,11 @@ class CycleController extends Controller
             ]);
         }
 
-        return redirect()->route('user.cycles.show', $cycle)->with('status', 'Siklus dibuat.');
+        $estimate = $estimateService->bootstrapForNewCycle($cycle->fresh(['fishSpecies']));
+
+        return redirect()
+            ->route('user.cycles.show', $cycle)
+            ->with('status', "Siklus dibuat. Perkiraan panen: {$estimate->estimated_harvest_date->format('d/m/Y')} · ±{$estimate->estimated_total_weight_kg} kg.");
     }
 
     public function show(Request $request, CultivationCycle $cycle, HarvestEstimateService $estimateService)
