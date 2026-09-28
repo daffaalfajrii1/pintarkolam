@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Support\AppDateTime;
 
 class MortalityLogResource extends JsonResource
 {
@@ -16,7 +17,7 @@ class MortalityLogResource extends JsonResource
             'death_count' => $this->death_count,
             'suspected_cause' => $this->suspected_cause,
             'notes' => $this->notes,
-            'created_at' => $this->created_at?->toISOString(),
+            'created_at' => AppDateTime::iso($this->created_at),
         ];
     }
 }

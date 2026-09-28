@@ -13,6 +13,7 @@ use App\Http\Resources\RecommendationResource;
 use App\Http\Resources\WaterQualityLogResource;
 use App\Http\Responses\ApiResponse;
 use App\Models\CultivationCycle;
+use App\Models\CycleCostEntry;
 use App\Models\FeedingLog;
 use App\Models\FeedingSchedule;
 use App\Models\GrowthRecord;
@@ -21,6 +22,7 @@ use App\Models\Pond;
 use App\Models\WaterQualityLog;
 use App\Services\HarvestEstimateService;
 use App\Services\WaterQualityService;
+use App\Support\AppDateTime;
 use Illuminate\Http\Request;
 
 class CycleController extends Controller
@@ -70,22 +72,12 @@ class CycleController extends Controller
         }
         unset($data['initial_size_cm'], $data['feed_times']);
 
-        $feedTimes = $request->input('feed_times', ['07:00', '17:00']);
-
         $data['user_id'] = $request->user()->id;
         $data['status'] = $data['status'] ?? 'active';
 
         $cycle = CultivationCycle::create($data);
 
-        foreach ($feedTimes as $time) {
-            FeedingSchedule::create([
-                'cultivation_cycle_id' => $cycle->id,
-                'feed_time' => $time,
-                'feed_type' => 'Pelet',
-                'amount_kg' => max(0.1, round($cycle->seed_count * 0.02 / 1000, 3)),
-                'is_active' => true,
-            ]);
-        }
+        // Jadwal pakan tidak diisi otomatis — tambahkan lewat menu Pakan.
 
         app(HarvestEstimateService::class)->bootstrapForNewCycle($cycle->fresh(['fishSpecies']));
 
@@ -253,6 +245,16 @@ class CycleController extends Controller
         return ApiResponse::success(new FeedingLogResource($log), 'Pemberian pakan tercatat', 201);
     }
 
+    public function feedingLogsIndex(CultivationCycle $cycle)
+    {
+        $this->authorize('view', $cycle);
+
+        return ApiResponse::success(
+            FeedingLogResource::collection($cycle->feedingLogs()->latest('fed_at')->paginate(30)),
+            'Riwayat pakan'
+        );
+    }
+
     public function growthRecords(CultivationCycle $cycle)
     {
         $this->authorize('view', $cycle);
@@ -303,7 +305,7 @@ class CycleController extends Controller
     {
         $this->authorize('view', $cycle);
 
-        $cycle->load(['pond.latestHealthScore', 'fishSpecies', 'harvestEstimate', 'user.farmerProfile']);
+        $cycle->load(['pond.latestHealthScore', 'pond.farmerProfile', 'fishSpecies', 'harvestEstimate', 'user.farmerProfile']);
         $estimate = $cycle->harvestEstimate ?: $estimateService->calculate($cycle);
 
         $waterLogsAsc = $cycle->waterQualityLogs()->latest('measured_at')->limit(30)->get()->sortBy('measured_at')->values();
@@ -322,6 +324,9 @@ class CycleController extends Controller
                 'total_cost' => $cycle->totalCost(),
                 'total_revenue' => $cycle->totalRevenue(),
                 'net_profit' => $cycle->netProfit(),
+                'survival_percent' => $cycle->seed_count > 0
+                    ? round(($cycle->aliveCount() / $cycle->seed_count) * 100, 1)
+                    : 0,
                 'health_score' => $cycle->pond?->latestHealthScore?->score,
                 'health_category' => $cycle->pond?->latestHealthScore?->category,
             ],
@@ -343,12 +348,29 @@ class CycleController extends Controller
                 'feed_labels' => $feedingLogs->sortBy('fed_at')->values()->map(fn ($f) => optional($f->fed_at)->format('d/m'))->values(),
                 'feed' => $feedingLogs->sortBy('fed_at')->values()->pluck('amount_kg')->values(),
             ],
-            'printed_at' => now()->toISOString(),
+            'printed_at' => AppDateTime::iso(now()),
+            'document_no' => 'PK-'.str_pad((string) $cycle->id, 4, '0', STR_PAD_LEFT).'/'.now()->format('Y'),
+            'cost_entries' => $cycle->costEntries()->latest('recorded_at')->latest('id')->limit(30)->get()->map(fn ($e) => [
+                'id' => $e->id,
+                'category' => $e->category,
+                'category_label' => $e->categoryLabel(),
+                'label' => $e->label,
+                'amount' => (float) $e->amount,
+                'recorded_at' => $e->recorded_at?->toDateString(),
+                'notes' => $e->notes,
+                'is_revenue' => $e->isRevenue(),
+            ]),
             'farmer' => [
-                'name' => $cycle->user?->name,
-                'business_name' => $cycle->user?->farmerProfile?->business_name,
-                'district' => $cycle->user?->farmerProfile?->district,
-                'whatsapp' => $cycle->user?->farmerProfile?->whatsapp,
+                'name' => $cycle->pond?->farmerProfile?->owner_name
+                    ?: $cycle->user?->farmerProfile?->owner_name
+                    ?: $cycle->user?->name,
+                'business_name' => $cycle->pond?->farmerProfile?->business_name
+                    ?: $cycle->user?->farmerProfile?->business_name,
+                'district' => $cycle->pond?->farmerProfile?->district
+                    ?: $cycle->user?->farmerProfile?->district
+                    ?: 'Rejang Lebong',
+                'whatsapp' => $cycle->pond?->farmerProfile?->whatsapp
+                    ?: $cycle->user?->farmerProfile?->whatsapp,
             ],
         ], 'Laporan siklus budidaya');
     }
@@ -382,6 +404,108 @@ class CycleController extends Controller
         ]);
 
         return ApiResponse::success(new MortalityLogResource($log), 'Kematian tercatat', 201);
+    }
+
+    public function costsIndex(CultivationCycle $cycle)
+    {
+        $this->authorize('view', $cycle);
+
+        $entries = $cycle->costEntries()->latest('recorded_at')->latest('id')->paginate(30);
+        $byCategory = $cycle->costEntries()
+            ->selectRaw('category, SUM(amount) as total')
+            ->groupBy('category')
+            ->pluck('total', 'category');
+
+        return ApiResponse::success([
+            'entries' => $entries->getCollection()->map(fn ($e) => [
+                'id' => $e->id,
+                'category' => $e->category,
+                'category_label' => $e->categoryLabel(),
+                'label' => $e->label,
+                'amount' => (float) $e->amount,
+                'recorded_at' => $e->recorded_at?->toDateString(),
+                'notes' => $e->notes,
+                'is_revenue' => $e->isRevenue(),
+            ]),
+            'categories' => CycleCostEntry::CATEGORIES,
+            'by_category' => $byCategory,
+            'total_cost' => $cycle->totalCost(),
+            'total_revenue' => $cycle->totalRevenue(),
+            'net_profit' => $cycle->netProfit(),
+        ], 'Biaya & keuntungan', meta: [
+            'current_page' => $entries->currentPage(),
+            'last_page' => $entries->lastPage(),
+            'per_page' => $entries->perPage(),
+            'total' => $entries->total(),
+        ]);
+    }
+
+    public function costsStore(Request $request, CultivationCycle $cycle)
+    {
+        $this->authorize('update', $cycle);
+
+        $data = $request->validate([
+            'category' => ['required', 'in:'.implode(',', array_keys(CycleCostEntry::CATEGORIES))],
+            'amount' => ['required', 'numeric', 'min:1'],
+            'recorded_at' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string'],
+            'label' => ['nullable', 'string', 'max:150'],
+        ]);
+
+        $entry = CycleCostEntry::create([
+            ...$data,
+            'cultivation_cycle_id' => $cycle->id,
+            'user_id' => $request->user()->id,
+            'label' => $data['label'] ?? CycleCostEntry::CATEGORIES[$data['category']],
+            'recorded_at' => $data['recorded_at'] ?? now()->toDateString(),
+        ]);
+
+        $this->syncLegacyCostColumns($cycle);
+
+        return ApiResponse::success([
+            'id' => $entry->id,
+            'category' => $entry->category,
+            'category_label' => $entry->categoryLabel(),
+            'label' => $entry->label,
+            'amount' => (float) $entry->amount,
+            'recorded_at' => $entry->recorded_at?->toDateString(),
+            'notes' => $entry->notes,
+            'is_revenue' => $entry->isRevenue(),
+            'total_cost' => $cycle->fresh()->totalCost(),
+            'total_revenue' => $cycle->fresh()->totalRevenue(),
+            'net_profit' => $cycle->fresh()->netProfit(),
+        ], 'Biaya ditambahkan', 201);
+    }
+
+    public function costsDestroy(CultivationCycle $cycle, CycleCostEntry $entry)
+    {
+        $this->authorize('update', $cycle);
+        abort_unless($entry->cultivation_cycle_id === $cycle->id, 404);
+        $entry->delete();
+        $this->syncLegacyCostColumns($cycle);
+
+        return ApiResponse::success([
+            'total_cost' => $cycle->fresh()->totalCost(),
+            'total_revenue' => $cycle->fresh()->totalRevenue(),
+            'net_profit' => $cycle->fresh()->netProfit(),
+        ], 'Catatan biaya dihapus');
+    }
+
+    private function syncLegacyCostColumns(CultivationCycle $cycle): void
+    {
+        $sums = $cycle->costEntries()
+            ->selectRaw('category, SUM(amount) as total')
+            ->groupBy('category')
+            ->pluck('total', 'category');
+
+        $cycle->update([
+            'seed_cost' => (float) ($sums['seed'] ?? 0),
+            'feed_cost' => (float) ($sums['feed'] ?? 0),
+            'electricity_cost' => (float) ($sums['electricity'] ?? 0),
+            'medicine_cost' => (float) ($sums['medicine'] ?? 0),
+            'other_cost' => (float) ($sums['other'] ?? 0),
+            'estimated_revenue' => (float) ($sums['revenue'] ?? 0),
+        ]);
     }
 
     public function notes(Request $request)

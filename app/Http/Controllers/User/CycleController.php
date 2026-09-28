@@ -82,15 +82,7 @@ class CycleController extends Controller
             'status' => 'active',
         ]);
 
-        foreach (['07:00', '17:00'] as $time) {
-            FeedingSchedule::create([
-                'cultivation_cycle_id' => $cycle->id,
-                'feed_time' => $time,
-                'feed_type' => 'Pelet',
-                'amount_kg' => max(0.1, round($cycle->seed_count * 0.02 / 1000, 3)),
-                'is_active' => true,
-            ]);
-        }
+        // Jadwal pakan tidak diisi otomatis — pembudidaya menambahkan sendiri.
 
         $estimate = $estimateService->bootstrapForNewCycle($cycle->fresh(['fishSpecies']));
 

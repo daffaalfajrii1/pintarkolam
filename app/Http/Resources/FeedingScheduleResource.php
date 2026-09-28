@@ -11,7 +11,9 @@ class FeedingScheduleResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'feed_time' => $this->feed_time,
+            'feed_time' => is_string($this->feed_time)
+                ? substr($this->feed_time, 0, 5)
+                : optional($this->feed_time)->format('H:i'),
             'feed_type' => $this->feed_type,
             'amount_kg' => $this->amount_kg,
             'is_active' => $this->is_active,

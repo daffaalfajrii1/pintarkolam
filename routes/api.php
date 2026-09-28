@@ -49,6 +49,7 @@ Route::prefix('v1')->group(function () {
         Route::get('cycles/{cycle}/recommendations', [CycleController::class, 'recommendations']);
         Route::get('cycles/{cycle}/feeding-schedules', [CycleController::class, 'feedingSchedules']);
         Route::post('cycles/{cycle}/feeding-schedules', [CycleController::class, 'feedingSchedulesStore']);
+        Route::get('cycles/{cycle}/feeding-logs', [CycleController::class, 'feedingLogsIndex']);
         Route::post('cycles/{cycle}/feeding-logs', [CycleController::class, 'feedingLogsStore']);
         Route::get('cycles/{cycle}/growth-records', [CycleController::class, 'growthRecords']);
         Route::post('cycles/{cycle}/growth-records', [CycleController::class, 'growthRecordsStore']);
@@ -56,8 +57,12 @@ Route::prefix('v1')->group(function () {
         Route::get('cycles/{cycle}/report', [CycleController::class, 'report']);
         Route::get('cycles/{cycle}/mortality', [CycleController::class, 'mortalityIndex']);
         Route::post('cycles/{cycle}/mortality', [CycleController::class, 'mortalityStore']);
+        Route::get('cycles/{cycle}/costs', [CycleController::class, 'costsIndex']);
+        Route::post('cycles/{cycle}/costs', [CycleController::class, 'costsStore']);
+        Route::delete('cycles/{cycle}/costs/{entry}', [CycleController::class, 'costsDestroy']);
         Route::get('my/notes', [CycleController::class, 'notes']);
 
+        Route::get('my/products', [ProductController::class, 'mine']);
         Route::post('products', [ProductController::class, 'store']);
         Route::put('products/{product}', [ProductController::class, 'update']);
         Route::delete('products/{product}', [ProductController::class, 'destroy']);

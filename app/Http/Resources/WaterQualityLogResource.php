@@ -5,6 +5,7 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
+use App\Support\AppDateTime;
 
 class WaterQualityLogResource extends JsonResource
 {
@@ -21,8 +22,8 @@ class WaterQualityLogResource extends JsonResource
             'odor' => $this->odor,
             'notes' => $this->notes,
             'photo_url' => $this->photo_path ? Storage::disk('public')->url($this->photo_path) : null,
-            'measured_at' => $this->measured_at?->toISOString(),
-            'created_at' => $this->created_at?->toISOString(),
+            'measured_at' => AppDateTime::iso($this->measured_at),
+            'created_at' => AppDateTime::iso($this->created_at),
         ];
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Support\AppDateTime;
 
 class FeedingLogResource extends JsonResource
 {
@@ -11,7 +12,7 @@ class FeedingLogResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'fed_at' => $this->fed_at?->toISOString(),
+            'fed_at' => AppDateTime::iso($this->fed_at),
             'feed_type' => $this->feed_type,
             'amount_kg' => $this->amount_kg,
             'leftover_kg' => $this->leftover_kg,

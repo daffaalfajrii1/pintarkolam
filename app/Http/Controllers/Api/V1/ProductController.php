@@ -11,6 +11,19 @@ use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
+    public function mine(Request $request)
+    {
+        $products = Product::with(['fishSpecies', 'photos', 'farmerProfile'])
+            ->where('user_id', $request->user()->id)
+            ->latest()
+            ->paginate(30);
+
+        return ApiResponse::success(
+            ProductResource::collection($products),
+            'Katalog produk saya'
+        );
+    }
+
     public function store(Request $request)
     {
         $this->authorize('create', Product::class);
