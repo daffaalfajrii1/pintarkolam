@@ -11,6 +11,47 @@
     </div>
 </div>
 
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="GET" action="{{ route('user.ponds.index') }}" class="row g-2 align-items-end">
+            <div class="col-12 col-md-5">
+                <label class="form-label mb-1">Cari kolam</label>
+                <input type="search" name="q" value="{{ $search }}" class="form-control" placeholder="Nama kolam, jenis, siklus, atau ikan...">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label mb-1">Jenis</label>
+                <select name="type" class="form-select">
+                    <option value="">Semua</option>
+                    @foreach($types as $t)
+                        <option value="{{ $t }}" @selected($type === $t)>{{ ucfirst($t) }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label mb-1">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">Semua</option>
+                    @foreach($statuses as $s)
+                        <option value="{{ $s }}" @selected($status === $s)>{{ $s }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-12 col-md-3 d-flex gap-2">
+                <button type="submit" class="pk-btn pk-btn-primary flex-grow-1">Cari</button>
+                @if($search !== '' || $type || $status)
+                    <a href="{{ route('user.ponds.index') }}" class="pk-btn pk-btn-outline">Reset</a>
+                @endif
+            </div>
+        </form>
+        @if($search !== '' || $type || $status)
+            <div class="small text-muted mt-2 mb-0">
+                Menampilkan {{ $ponds->total() }} kolam
+                @if($search !== '') untuk pencarian “{{ $search }}”@endif
+            </div>
+        @endif
+    </div>
+</div>
+
 @forelse($ponds as $pond)
 @php
     $cat = $pond->latestHealthScore?->category;
@@ -108,7 +149,25 @@
     </div>
 </div>
 @empty
-<div class="card"><div class="card-body text-center text-muted">Belum ada kolam. <a href="{{ route('user.ponds.create') }}">Tambah kolam</a></div></div>
+<div class="card">
+    <div class="card-body text-center text-muted">
+        @if($search !== '' || $type || $status)
+            Tidak ada kolam yang cocok dengan pencarian.
+            <div class="mt-2"><a href="{{ route('user.ponds.index') }}" class="pk-btn pk-btn-outline pk-btn-sm">Reset pencarian</a></div>
+        @else
+            Belum ada kolam. <a href="{{ route('user.ponds.create') }}">Tambah kolam</a>
+        @endif
+    </div>
+</div>
 @endforelse
-{{ $ponds->links() }}
+
+@if($ponds->total() > 0)
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2 mb-2">
+    <div class="small text-muted">
+        Halaman {{ $ponds->currentPage() }} dari {{ max(1, $ponds->lastPage()) }}
+        · {{ $ponds->total() }} kolam
+    </div>
+    <div>{{ $ponds->links() }}</div>
+</div>
+@endif
 @endsection

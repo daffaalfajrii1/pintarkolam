@@ -10,15 +10,43 @@ class PondController extends Controller
 {
     public function index(Request $request)
     {
+        $search = trim((string) $request->input('q', ''));
+        $status = $request->input('status');
+        $type = $request->input('type');
+
         $ponds = Pond::with([
             'latestHealthScore',
-            'cycles' => fn ($q) => $q->with('fishSpecies')->whereIn('status', ['active', 'near_harvest', 'completed', 'preparation', 'failed'])->latest(),
+            'cycles' => fn ($q) => $q->with('fishSpecies')
+                ->whereIn('status', ['active', 'near_harvest', 'completed', 'preparation', 'failed'])
+                ->latest(),
         ])
             ->where('user_id', $request->user()->id)
+            ->when($search !== '', function ($q) use ($search) {
+                $q->where(function ($inner) use ($search) {
+                    $inner->where('name', 'like', "%{$search}%")
+                        ->orWhere('type', 'like', "%{$search}%")
+                        ->orWhere('notes', 'like', "%{$search}%")
+                        ->orWhere('status', 'like', "%{$search}%")
+                        ->orWhereHas('cycles', function ($cq) use ($search) {
+                            $cq->where('name', 'like', "%{$search}%")
+                                ->orWhereHas('fishSpecies', fn ($sq) => $sq->where('name', 'like', "%{$search}%"));
+                        });
+                });
+            })
+            ->when($status, fn ($q) => $q->where('status', $status))
+            ->when($type, fn ($q) => $q->where('type', $type))
             ->latest()
-            ->paginate(10);
+            ->paginate(5)
+            ->withQueryString();
 
-        return view('user.ponds.index', compact('ponds'));
+        return view('user.ponds.index', [
+            'ponds' => $ponds,
+            'search' => $search,
+            'status' => $status,
+            'type' => $type,
+            'types' => ['beton', 'terpal', 'tanah', 'bioflok', 'lainnya'],
+            'statuses' => ['active', 'inactive', 'maintenance'],
+        ]);
     }
 
     public function show(Request $request, Pond $pond)
