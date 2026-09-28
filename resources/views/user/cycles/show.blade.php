@@ -59,13 +59,35 @@
 
 <div class="row g-3">
     <div class="col-lg-4">
-        <div class="card h-100">
-            <div class="card-header">Ringkasan</div>
+        <div class="card h-100 border-0 shadow-sm" style="border-top:3px solid #0f766e!important">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <span class="fw-bold">Ringkasan Resmi</span>
+                <a href="{{ route('user.cycles.print', $cycle) }}" target="_blank" class="pk-btn pk-btn-primary pk-btn-sm">Cetak PDF</a>
+            </div>
             <div class="card-body">
-                <p class="mb-1">Estimasi panen: <strong>{{ $estimate->estimated_fish_count }}</strong> ekor · <strong>{{ $estimate->estimated_total_weight_kg }}</strong> kg</p>
-                <p class="mb-1">Nilai estimasi: <strong class="pk-money">Rp {{ number_format($estimate->estimated_value, 0, ',', '.') }}</strong></p>
-                <p class="mb-1">Total biaya: <strong class="pk-money">Rp {{ number_format($totalCost, 0, ',', '.') }}</strong></p>
-                <p class="mb-0">Keuntungan bersih: <strong class="pk-money {{ $netProfit >= 0 ? 'text-success' : 'text-danger' }}">Rp {{ number_format($netProfit, 0, ',', '.') }}</strong></p>
+                <div class="small text-muted mb-2">Estimasi berdasarkan jenis ikan &amp; data siklus</div>
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <td class="text-muted border-0 ps-0">Estimasi panen</td>
+                        <td class="text-end border-0 pe-0 fw-semibold">{{ number_format($estimate->estimated_fish_count) }} ekor · {{ number_format((float)$estimate->estimated_total_weight_kg, 2, ',', '.') }} kg</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted ps-0">Tanggal panen</td>
+                        <td class="text-end pe-0 fw-semibold">{{ $estimate->estimated_harvest_date?->format('d/m/Y') ?: '—' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted ps-0">Nilai estimasi</td>
+                        <td class="text-end pe-0 fw-semibold pk-money">Rp {{ number_format($estimate->estimated_value, 0, ',', '.') }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted ps-0">Total biaya</td>
+                        <td class="text-end pe-0 fw-semibold pk-money">Rp {{ number_format($totalCost, 0, ',', '.') }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted ps-0 border-0">Keuntungan bersih</td>
+                        <td class="text-end pe-0 border-0 fw-bold pk-money {{ $netProfit >= 0 ? 'text-success' : 'text-danger' }}">Rp {{ number_format($netProfit, 0, ',', '.') }}</td>
+                    </tr>
+                </table>
             </div>
         </div>
     </div>

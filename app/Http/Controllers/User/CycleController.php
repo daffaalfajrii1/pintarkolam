@@ -144,20 +144,28 @@ class CycleController extends Controller
     public function print(Request $request, CultivationCycle $cycle, HarvestEstimateService $estimateService)
     {
         $this->authorizeCycle($request, $cycle);
-        $cycle->load(['pond.latestHealthScore', 'fishSpecies', 'user']);
+        $cycle->load(['pond.latestHealthScore', 'pond.farmerProfile', 'fishSpecies', 'user.farmerProfile']);
         $estimate = $cycle->harvestEstimate ?: $estimateService->calculate($cycle);
-        $waterLogs = $cycle->waterQualityLogs()->latest('measured_at')->limit(20)->get();
+        $waterLogs = $cycle->waterQualityLogs()->latest('measured_at')->limit(15)->get();
+        $feedingLogs = $cycle->feedingLogs()->latest('fed_at')->limit(10)->get();
+        $mortalityLogs = $cycle->mortalityLogs()->latest('recorded_at')->limit(10)->get();
+        $recommendations = $cycle->recommendations()->latest()->limit(5)->get();
 
         return view('user.cycles.print', [
             'cycle' => $cycle,
             'estimate' => $estimate,
             'waterLogs' => $waterLogs,
+            'feedingLogs' => $feedingLogs,
+            'mortalityLogs' => $mortalityLogs,
+            'recommendations' => $recommendations,
             'alive' => $cycle->aliveCount(),
             'deaths' => $cycle->totalDeaths(),
             'totalFeed' => $cycle->totalFeedKg(),
             'fcr' => $cycle->fcr(),
             'totalCost' => $cycle->totalCost(),
+            'totalRevenue' => $cycle->totalRevenue(),
             'netProfit' => $cycle->netProfit(),
+            'printedAt' => now(),
         ]);
     }
 

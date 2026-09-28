@@ -17,7 +17,7 @@
         </div>
     </div>
     <div class="pk-actions">
-        <a href="{{ route('user.cycles.print', $cycle) }}" target="_blank" class="pk-btn pk-btn-outline">Cetak PDF</a>
+        <a href="{{ route('user.cycles.print', $cycle) }}" target="_blank" class="pk-btn pk-btn-primary">Cetak PDF</a>
         <a href="{{ route('user.ponds.index') }}" class="pk-btn pk-btn-outline">Budidaya</a>
         @unless(in_array($cycle->status, ['failed', 'completed'], true))
         <form method="POST" action="{{ route('user.cycles.deactivate', $cycle) }}" class="d-inline"
