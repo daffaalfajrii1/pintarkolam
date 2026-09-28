@@ -16,25 +16,70 @@ class MyPondController extends Controller
     public function dashboard(Request $request)
     {
         $user = $request->user();
+        $pondId = $request->integer('pond_id') ?: null;
 
         $ponds = Pond::with(['photos', 'latestHealthScore'])
             ->where('user_id', $user->id)
             ->latest()
             ->get();
 
-        $cycles = \App\Models\CultivationCycle::with(['pond', 'fishSpecies', 'harvestEstimate'])
-            ->where('user_id', $user->id)
-            ->whereIn('status', ['active', 'near_harvest', 'preparation'])
-            ->latest()
-            ->get();
+        if ($pondId && ! $ponds->contains('id', $pondId)) {
+            $pondId = null;
+        }
 
-        $latestWater = \App\Models\WaterQualityLog::query()
+        $cyclesQuery = \App\Models\CultivationCycle::with(['pond', 'fishSpecies', 'harvestEstimate'])
             ->where('user_id', $user->id)
-            ->latest('measured_at')
-            ->first();
+            ->whereIn('status', ['active', 'near_harvest', 'preparation']);
 
-        $primaryPond = $ponds->first(fn ($p) => $p->latestHealthScore) ?? $ponds->first();
+        if ($pondId) {
+            $cyclesQuery->where('pond_id', $pondId);
+        }
+
+        $cycles = $cyclesQuery->latest()->get();
+
+        $primaryPond = $pondId
+            ? $ponds->firstWhere('id', $pondId)
+            : ($ponds->first(fn ($p) => $p->latestHealthScore) ?? $ponds->first());
         $health = $primaryPond?->latestHealthScore;
+
+        $waterQuery = \App\Models\WaterQualityLog::query()->where('user_id', $user->id);
+        if ($pondId) {
+            $waterQuery->where('pond_id', $pondId);
+        }
+
+        $latestWater = (clone $waterQuery)->latest('measured_at')->first();
+
+        $waterLogs = (clone $waterQuery)
+            ->latest('measured_at')
+            ->limit(20)
+            ->get()
+            ->sortBy('measured_at')
+            ->values();
+
+        $cycleIds = $cycles->pluck('id');
+        if ($cycleIds->isEmpty() && ! $pondId) {
+            $cycleIds = \App\Models\CultivationCycle::where('user_id', $user->id)->pluck('id');
+        }
+
+        $recommendations = \App\Models\Recommendation::whereIn('cultivation_cycle_id', $cycleIds)
+            ->with('cycle')
+            ->latest()
+            ->limit(8)
+            ->get()
+            ->map(fn ($rec) => [
+                'id' => $rec->id,
+                'title' => $rec->title,
+                'advice' => $rec->advice,
+                'severity' => $rec->severity,
+                'cycle_name' => $rec->cycle?->name,
+                'created_at' => $rec->created_at?->toISOString(),
+            ]);
+
+        $alertCounts = [
+            'baik' => $ponds->filter(fn ($p) => in_array($p->latestHealthScore?->category, ['baik', 'normal'], true))->count(),
+            'waspada' => $ponds->filter(fn ($p) => ($p->latestHealthScore?->category ?? '') === 'waspada')->count(),
+            'kritis' => $ponds->filter(fn ($p) => ($p->latestHealthScore?->category ?? '') === 'kritis')->count(),
+        ];
 
         $categoryLabel = match ($health?->category) {
             'baik', 'normal' => 'Normal',
@@ -45,8 +90,10 @@ class MyPondController extends Controller
 
         return ApiResponse::success([
             'user_name' => $user->name,
+            'selected_pond_id' => $primaryPond?->id,
             'ponds_count' => $ponds->count(),
             'cycles_count' => $cycles->count(),
+            'alert_counts' => $alertCounts,
             'health' => [
                 'score' => $health?->score,
                 'category' => $health?->category,
@@ -58,6 +105,7 @@ class MyPondController extends Controller
                     default => 'Belum ada skor kesehatan. Input kualitas air dulu.',
                 },
                 'pond_name' => $primaryPond?->name,
+                'pond_id' => $primaryPond?->id,
             ],
             'latest_water' => $latestWater ? [
                 'ph' => (float) $latestWater->ph,
@@ -67,6 +115,13 @@ class MyPondController extends Controller
                 'cycle_id' => $latestWater->cultivation_cycle_id,
                 'pond_id' => $latestWater->pond_id,
             ] : null,
+            'chart' => [
+                'labels' => $waterLogs->map(fn ($l) => optional($l->measured_at)->format('d/m H:i'))->values(),
+                'ph' => $waterLogs->pluck('ph')->map(fn ($v) => (float) $v)->values(),
+                'temp' => $waterLogs->pluck('temperature_c')->map(fn ($v) => (float) $v)->values(),
+                'do' => $waterLogs->pluck('dissolved_oxygen')->map(fn ($v) => (float) $v)->values(),
+            ],
+            'recommendations' => $recommendations,
             'ponds' => PondResource::collection($ponds),
             'cycles' => \App\Http\Resources\CultivationCycleResource::collection($cycles),
         ], 'Dashboard pembudidaya');

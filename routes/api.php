@@ -53,6 +53,7 @@ Route::prefix('v1')->group(function () {
         Route::get('cycles/{cycle}/growth-records', [CycleController::class, 'growthRecords']);
         Route::post('cycles/{cycle}/growth-records', [CycleController::class, 'growthRecordsStore']);
         Route::get('cycles/{cycle}/harvest-estimate', [CycleController::class, 'harvestEstimate']);
+        Route::get('cycles/{cycle}/report', [CycleController::class, 'report']);
         Route::get('cycles/{cycle}/mortality', [CycleController::class, 'mortalityIndex']);
         Route::post('cycles/{cycle}/mortality', [CycleController::class, 'mortalityStore']);
         Route::get('my/notes', [CycleController::class, 'notes']);

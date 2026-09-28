@@ -29,10 +29,14 @@ class CycleController extends Controller
     {
         $this->authorize('viewAny', CultivationCycle::class);
 
-        $cycles = CultivationCycle::with(['pond', 'fishSpecies', 'harvestEstimate'])
-            ->where('user_id', $request->user()->id)
-            ->latest()
-            ->paginate(15);
+        $query = CultivationCycle::with(['pond', 'fishSpecies', 'harvestEstimate'])
+            ->where('user_id', $request->user()->id);
+
+        if ($request->filled('pond_id')) {
+            $query->where('pond_id', $request->integer('pond_id'));
+        }
+
+        $cycles = $query->latest()->paginate(50);
 
         return ApiResponse::success(CultivationCycleResource::collection($cycles), 'Daftar siklus');
     }
@@ -293,6 +297,60 @@ class CycleController extends Controller
         $estimate = $cycle->harvestEstimate ?: $estimateService->calculate($cycle);
 
         return ApiResponse::success(new HarvestEstimateResource($estimate), 'Estimasi panen');
+    }
+
+    public function report(CultivationCycle $cycle, HarvestEstimateService $estimateService)
+    {
+        $this->authorize('view', $cycle);
+
+        $cycle->load(['pond.latestHealthScore', 'fishSpecies', 'harvestEstimate', 'user.farmerProfile']);
+        $estimate = $cycle->harvestEstimate ?: $estimateService->calculate($cycle);
+
+        $waterLogsAsc = $cycle->waterQualityLogs()->latest('measured_at')->limit(30)->get()->sortBy('measured_at')->values();
+        $feedingLogs = $cycle->feedingLogs()->latest('fed_at')->limit(15)->get();
+        $mortalityLogs = $cycle->mortalityLogs()->latest('recorded_at')->limit(15)->get();
+        $growthRecords = $cycle->growthRecords()->latest('sampled_at')->limit(15)->get();
+        $recommendations = $cycle->recommendations()->latest()->limit(8)->get();
+
+        return ApiResponse::success([
+            'cycle' => new CultivationCycleResource($cycle),
+            'summary' => [
+                'alive' => $cycle->aliveCount(),
+                'deaths' => $cycle->totalDeaths(),
+                'total_feed_kg' => $cycle->totalFeedKg(),
+                'fcr' => $cycle->fcr(),
+                'total_cost' => $cycle->totalCost(),
+                'total_revenue' => $cycle->totalRevenue(),
+                'net_profit' => $cycle->netProfit(),
+                'health_score' => $cycle->pond?->latestHealthScore?->score,
+                'health_category' => $cycle->pond?->latestHealthScore?->category,
+            ],
+            'harvest_estimate' => new HarvestEstimateResource($estimate),
+            'water_logs' => WaterQualityLogResource::collection($waterLogsAsc->sortByDesc(fn ($l) => $l->measured_at)->values()),
+            'feeding_logs' => FeedingLogResource::collection($feedingLogs),
+            'mortality_logs' => MortalityLogResource::collection($mortalityLogs),
+            'growth_records' => GrowthRecordResource::collection($growthRecords),
+            'recommendations' => RecommendationResource::collection($recommendations),
+            'chart' => [
+                'labels' => $waterLogsAsc->map(fn ($l) => optional($l->measured_at)->format('d/m H:i'))->values(),
+                'ph' => $waterLogsAsc->pluck('ph')->map(fn ($v) => (float) $v)->values(),
+                'temp' => $waterLogsAsc->pluck('temperature_c')->map(fn ($v) => (float) $v)->values(),
+                'do' => $waterLogsAsc->pluck('dissolved_oxygen')->map(fn ($v) => (float) $v)->values(),
+                'mortality_labels' => $mortalityLogs->sortBy('recorded_at')->values()->map(fn ($m) => optional($m->recorded_at)->format('d/m'))->values(),
+                'mortality' => $mortalityLogs->sortBy('recorded_at')->values()->pluck('death_count')->values(),
+                'weight_labels' => $growthRecords->sortBy('sampled_at')->values()->map(fn ($g) => optional($g->sampled_at)->format('d/m'))->values(),
+                'weight' => $growthRecords->sortBy('sampled_at')->values()->pluck('avg_weight_gram')->values(),
+                'feed_labels' => $feedingLogs->sortBy('fed_at')->values()->map(fn ($f) => optional($f->fed_at)->format('d/m'))->values(),
+                'feed' => $feedingLogs->sortBy('fed_at')->values()->pluck('amount_kg')->values(),
+            ],
+            'printed_at' => now()->toISOString(),
+            'farmer' => [
+                'name' => $cycle->user?->name,
+                'business_name' => $cycle->user?->farmerProfile?->business_name,
+                'district' => $cycle->user?->farmerProfile?->district,
+                'whatsapp' => $cycle->user?->farmerProfile?->whatsapp,
+            ],
+        ], 'Laporan siklus budidaya');
     }
 
     public function mortalityIndex(CultivationCycle $cycle)
